@@ -215,6 +215,8 @@ export interface SubagentState {
 		schedule(file: string, delayMs?: number): boolean;
 		clear(): void;
 	};
+	/** Currently active agent for /agent switch feature */
+	currentActiveAgent: AgentConfig | null;
 }
 
 // ============================================================================

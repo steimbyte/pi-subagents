@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { Key, matchesKey } from "@mariozechner/pi-tui";
-import { discoverAgents, discoverAgentsAll } from "./agents.ts";
+import { discoverAgents, discoverAgentsAll, type AgentConfig } from "./agents.ts";
 import { AgentManagerComponent, type ManagerResult } from "./agent-manager.ts";
 import { SubagentsStatusComponent } from "./subagents-status.ts";
 import { discoverAvailableSkills } from "./skills.ts";
@@ -394,6 +394,42 @@ export function registerSlashCommands(
 		description: "Open the Agents Manager",
 		handler: async (_args, ctx) => {
 			await openAgentManager(pi, ctx);
+		},
+	});
+
+	pi.registerCommand("agent", {
+		description: "Switch to an agent: /agent <name>. Use /agent-off to disable.",
+		getArgumentCompletions: makeAgentCompletions(state, false),
+		handler: async (args, ctx) => {
+			const trimmed = args.trim();
+			const agents = discoverAgents(state.baseCwd, "both").agents;
+
+			if (!trimmed) {
+				// Show available agents
+				const agentList = agents.map((a) => `  - ${a.name}: ${a.description}`).join("\n");
+				ctx.ui.notify(
+					`Available agents:\n${agentList}\n\nUse /agent <name> to switch.`,
+					"info",
+				);
+				return;
+			}
+
+			// Direct agent name specified
+			const agent = agents.find((a) => a.name === trimmed);
+			if (!agent) {
+				ctx.ui.notify(`Unknown agent: ${trimmed}. Use /agent to see available agents.`, "error");
+				return;
+			}
+			state.currentActiveAgent = agent;
+			ctx.ui.notify(`Switched to agent: ${agent.name}`, "info");
+		},
+	});
+
+	pi.registerCommand("agent-off", {
+		description: "Disable agent switching, restore default behavior",
+		handler: async (_args, ctx) => {
+			state.currentActiveAgent = null;
+			ctx.ui.notify("Agent switching disabled", "info");
 		},
 	});
 

@@ -163,6 +163,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 			schedule: () => false,
 			clear: () => {},
 		},
+		currentActiveAgent: null,
 	};
 
 	const { startResultWatcher, primeExistingResults, stopResultWatcher } = createResultWatcher(
@@ -433,6 +434,41 @@ MANAGEMENT (use action field, omit agent/task/chain/tasks):
 	pi.registerTool(tool);
 	pi.registerTool(statusTool);
 	registerSlashCommands(pi, state);
+
+	// Register --agent flag for CLI
+	pi.registerFlag("agent", {
+		description: "Start with a specific agent active (e.g., --agent super-builder)",
+		type: "string",
+	});
+
+	// Check for --agent flag at startup and set the active agent
+	const agentFlag = pi.getFlag("agent") as string | undefined;
+	if (agentFlag) {
+		const agents = discoverAgents(state.baseCwd, "both").agents;
+		const agent = agents.find((a) => a.name === agentFlag);
+		if (agent) {
+			state.currentActiveAgent = agent;
+			console.log(`[pi-subagents] Started with agent: ${agent.name}`);
+		} else {
+			console.warn(`[pi-subagents] Unknown agent: ${agentFlag}. Use 'pi list-agents' to see available agents.`);
+		}
+	}
+
+	// Agent switch feature: inject active agent's system prompt
+	pi.on("before_agent_start", (event, ctx) => {
+		if (!state.currentActiveAgent) return;
+
+		const agent = state.currentActiveAgent;
+		const currentPrompt = ctx.getSystemPrompt();
+
+		if (agent.systemPromptMode === "replace") {
+			// Replace entirely with agent's prompt
+			return { systemPrompt: agent.systemPrompt };
+		} else {
+			// Append agent's prompt to current prompt
+			return { systemPrompt: `${currentPrompt}\n\n--- AGENT: ${agent.name} ---\n\n${agent.systemPrompt}` };
+		}
+	});
 
 	pi.events.on("subagent:started", handleStarted);
 	pi.events.on("subagent:complete", handleComplete);
