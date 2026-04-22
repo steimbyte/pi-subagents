@@ -60,13 +60,19 @@ function getSubagentSessionRoot(parentSessionFile: string | null): string {
 }
 
 function loadConfig(): ExtensionConfig {
-	const configPath = path.join(os.homedir(), ".pi", "agent", "extensions", "subagent", "config.json");
-	try {
-		if (fs.existsSync(configPath)) {
-			return JSON.parse(fs.readFileSync(configPath, "utf-8")) as ExtensionConfig;
+	// Support both old location (for manual installs) and new package location
+	const configPaths = [
+		path.join(os.homedir(), ".pi", "agent", "pi-subagents-config.json"),
+		path.join(os.homedir(), ".pi", "agent", "extensions", "subagent", "config.json"),
+	];
+	for (const configPath of configPaths) {
+		try {
+			if (fs.existsSync(configPath)) {
+				return JSON.parse(fs.readFileSync(configPath, "utf-8")) as ExtensionConfig;
+			}
+		} catch (error) {
+			console.error(`Failed to load subagent config from '${configPath}':`, error);
 		}
-	} catch (error) {
-		console.error(`Failed to load subagent config from '${configPath}':`, error);
 	}
 	return {};
 }
@@ -441,18 +447,7 @@ MANAGEMENT (use action field, omit agent/task/chain/tasks):
 		type: "string",
 	});
 
-	// Check for --agent flag at startup and set the active agent
-	const agentFlag = pi.getFlag("agent") as string | undefined;
-	if (agentFlag) {
-		const agents = discoverAgents(state.baseCwd, "both").agents;
-		const agent = agents.find((a) => a.name === agentFlag);
-		if (agent) {
-			state.currentActiveAgent = agent;
-			console.log(`[pi-subagents] Started with agent: ${agent.name}`);
-		} else {
-			console.warn(`[pi-subagents] Unknown agent: ${agentFlag}. Use 'pi list-agents' to see available agents.`);
-		}
-	}
+	console.log(`[pi-subagents] loadConfig: inheritCurrentModel=${config.inheritCurrentModel}`);
 
 	// Agent switch feature: inject active agent's system prompt
 	pi.on("before_agent_start", (event, ctx) => {
@@ -460,6 +455,8 @@ MANAGEMENT (use action field, omit agent/task/chain/tasks):
 
 		const agent = state.currentActiveAgent;
 		const currentPrompt = ctx.getSystemPrompt();
+
+		console.log(`[pi-subagents] before_agent_start: agent=${agent.name}, mode=${agent.systemPromptMode}`);
 
 		if (agent.systemPromptMode === "replace") {
 			// Replace entirely with agent's prompt
@@ -505,6 +502,19 @@ MANAGEMENT (use action field, omit agent/task/chain/tasks):
 
 	pi.on("session_start", (_event, ctx) => {
 		resetSessionState(ctx);
+
+		// Check for --agent flag and set the active agent
+		const agentFlag = pi.getFlag("agent") as string | undefined;
+		if (agentFlag) {
+			const agents = discoverAgents(state.baseCwd, "both").agents;
+			const agent = agents.find((a) => a.name === agentFlag);
+			if (agent) {
+				state.currentActiveAgent = agent;
+				console.log(`[pi-subagents] session_start: Set active agent: ${agent.name}`);
+			} else {
+				console.warn(`[pi-subagents] Unknown agent: ${agentFlag}. Available: ${agents.map(a => a.name).join(", ")}`);
+			}
+		}
 	});
 	pi.on("session_shutdown", () => {
 		stopResultWatcher();
