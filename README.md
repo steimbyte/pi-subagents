@@ -1,3 +1,5 @@
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/steimerbyte)
+
 <p>
   <img src="banner.png" alt="pi-subagents" width="1100">
 </p>
